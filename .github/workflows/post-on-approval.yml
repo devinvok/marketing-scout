@@ -1,0 +1,85 @@
+name: Post on approval
+
+# The only trigger that ever publishes anything. A human adds the "approved" label
+# to an issue this system opened; that label, and nothing else, causes a post.
+# Secrets never appear in any log, any client, or any page -- they exist only here.
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+
+jobs:
+  post:
+    if: github.event.label.name == 'approved'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse the issue body
+        id: parse
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          python3 - <<'PY'
+          import os, re, json
+          body = os.environ["BODY"]
+          m = re.search(r"```channel\s*\n(.*?)\n```", body, re.S)
+          if not m:
+              print("::error::No ```channel fenced block found in the issue body; nothing to post.")
+              raise SystemExit(1)
+          meta = json.loads(m.group(1))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"channel={meta['channel']}\n")
+              if meta.get("subreddit"):
+                  f.write(f"subreddit={meta['subreddit']}\n")
+              if meta.get("title"):
+                  f.write(f"title={meta['title']}\n")
+          m2 = re.search(r"```text\s*\n(.*?)\n```", body, re.S)
+          if not m2:
+              print("::error::No ```text fenced block found; nothing to post.")
+              raise SystemExit(1)
+          with open("post_body.txt", "w", encoding="utf-8") as f:
+              f.write(m2.group(1).strip())
+          PY
+
+      - name: Post to X
+        if: steps.parse.outputs.channel == 'x'
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          X_HANDLE: ${{ vars.X_HANDLE }}
+        run: python3 scripts/post_to_x.py "$(cat post_body.txt)" | tee post_url.txt
+
+      - name: Post to Reddit
+        if: steps.parse.outputs.channel == 'reddit'
+        env:
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_REFRESH_TOKEN: ${{ secrets.REDDIT_REFRESH_TOKEN }}
+          REDDIT_USER_AGENT: ${{ vars.REDDIT_USER_AGENT || 'marketing-scout/0.1 by u/unknown' }}
+        run: |
+          python3 scripts/post_to_reddit.py "${{ steps.parse.outputs.subreddit }}" "${{ steps.parse.outputs.title }}" "$(cat post_body.txt)" | tee post_url.txt
+
+      - name: Comment the result and close the issue
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          URL=$(cat post_url.txt 2>/dev/null || echo "")
+          if [ -n "$URL" ]; then
+            gh issue comment "${{ github.event.issue.number }}" --body "Posted: $URL"
+            gh issue close "${{ github.event.issue.number }}"
+          else
+            gh issue comment "${{ github.event.issue.number }}" --body "Approved, but no channel matched (hacker_news has no posting API -- submit this one by hand), or the secrets for this channel aren't set yet. See docs/ONBOARDING.md. Nothing was posted."
+          fi
+
+      - name: Report failure on the issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" --body "Posting failed -- check the Actions log for this run. The 'approved' label was not removed; fix the problem (likely a missing or expired secret) and re-add the label to retry." || true

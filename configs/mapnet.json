@@ -1,0 +1,19 @@
+{
+  "slug": "mapnet",
+  "repo": "devinvok/MapNet",
+  "facts_files": ["README.md", "CLAUDE.md", "docs/ROADMAP.md"],
+  "pitch": "A live, permission-aware retrieval map for local LLMs that finds files as often as embedding everything, without embedding the corpus up front.",
+  "competitors": ["plain embedding search (embed-all)", "LangChain/LlamaIndex RAG", "a vector database like Qdrant/Chroma"],
+  "visibility_questions": [
+    "What's a good local-first alternative to embedding a whole document corpus for RAG?",
+    "How do I add permission-aware retrieval to a local LLM setup?",
+    "What are some live/incrementally-updating RAG tools that don't need a vector database?"
+  ],
+  "channels": {
+    "x": { "enabled": false, "handle": "@Gal16572028" },
+    "reddit": { "enabled": false, "subreddits": ["LocalLLaMA"] },
+    "hacker_news": { "enabled": false, "note": "No posting API exists. Drafts only, always; the owner submits by hand." }
+  },
+  "awesome_lists": ["jxzhangjhu/awesome-llm-rag"],
+  "engines": ["claude"]
+}
