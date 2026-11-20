@@ -1,0 +1,44 @@
+name: Build dashboard
+
+# Rebuilds docs/site/index.html from this repo's own Issues whenever one changes,
+# and on a schedule as a safety net (an issue API blip shouldn't leave the page
+# stale for a week). Read-only: this workflow never touches posting secrets.
+on:
+  issues:
+    types: [opened, labeled, unlabeled, closed, reopened, edited]
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/build_dashboard.py
+      - name: Commit the built page
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/site/index.html
+          git diff --staged --quiet || git commit -m "dashboard: rebuild"
+          git push
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/site
+      - uses: actions/deploy-pages@v4
+        id: deployment
